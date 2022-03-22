@@ -243,3 +243,62 @@ A00223:416:HTMM3DRXX:2:2158:10565:32722	136	Chr01	110	255	42M	*	0	0	AACCCTAAACGA
 A00223:416:HTMM3DRXX:2:2267:9968:31501	163	Chr01	427	255	95M	=	427	95	CCCTAAACCCTAAACCCTAAACCCTAAAACCCTAAACCCTAAACCCTAAACCCTAACCCTAAACCCTAAACCCTAACCCTAAACCCTAAACCCTA	FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFF	NM:i:5	ZS:Z:--	MQ:i:255	MC:Z:95M
 A00223:416:HTMM3DRXX:2:2267:9968:31501	83	Chr01	427	255	95M	=	427	-95	CCCTAAACCCTAAACCCTAAACCCTAAAACCCTAAACCCTAAACCCTAAACCCTAACCCTAAACCCTAAACCCTAACCCTAAACCCTAAACCCTA	FFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFF	NM:i:5	ZS:Z:-+	MQ:i:255	MC:Z:95M
 `````
+
+The solution seemed to be swapping the order of the bamtools filter and picard steps
+
+`````
+vim#!/bin/bash -l
+#SBATCH --time=40:00:00
+#SBATCH --ntasks=1
+#SBATCH --mem=32g
+#SBATCH --tmp=10g
+#SBATCH --job-name=DRM_filter
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=read0094@umn.edu
+
+
+########## Modules #################
+
+#module load python2/2.7.8
+module load java
+#module load bedtools
+module load samtools
+module load bamtools
+#bsmap requires samtools < 1.0.0
+#module load samtools/0.1.18
+#PATH=~/software/bsmap-2.74/samtools:$PATH
+
+########## Set up dirs #################
+
+#get job ID
+#use sed, -n supression pattern space, then 'p' to print item number {PBS_ARRAYID} eg 2 from {list}
+echo sample being mapped is PHJ02
+
+#cd analysis
+mkdir -p bsmapped_filtered
+
+#PHJ01
+# keep properly paired reads using bamtools package
+# note that some reads marked as properly paired by bsmap actually map to different chromosomes
+bamtools filter \
+-isMapped true \
+-isPaired true \
+-isProperPair true \
+-in bsmapped/PHJ01_sorted.bam \
+-out bsmapped_filtered/PHJ01_sorted_pairs.bam
+
+java -jar /home/springer/read0094/Software/picard.jar MarkDuplicates \
+I=bsmapped_filtered/PHJ01_sorted_pairs.bam \
+O=bsmapped_filtered/PHJ01_sorted_MarkDup_pairs.bam \
+METRICS_FILE=bsmapped_filtered/PHJ02_MarkDupMetrics.txt \
+ASSUME_SORTED=true \
+REMOVE_DUPLICATES=true
+
+# clip overlapping reads using bamUtils package
+/home/springer/read0094/Software/bamUtil/bin/bam clipOverlap  \
+--in bsmapped_filtered/PHJ01_sorted_MarkDup_pairs.bam \
+--out bsmapped_filtered/PHJ01_sorted_MarkDup_pairs_clipOverlap.bam \
+--stats
+
+samtools index bsmapped_filtered/PHJ01_sorted_MarkDup_pairs_clipOverlap.bam
+`````
